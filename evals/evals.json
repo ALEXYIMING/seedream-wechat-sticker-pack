@@ -1,0 +1,23 @@
+{
+  "skill_name": "seedream-wechat-sticker-pack",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "用 Seedream 做一套微信表情，主题是 8Bit 土味情话。我已经有 16 条提示词，帮我生成全套上架物料。",
+      "expected_output": "应触发组合工作流，要求整理 prompt 文件，使用 Seedream 无水印生图，并输出原始目录、主表情240、配套图、文案、打包 zip。",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "我这个目录里已经有 16 张原始图了，不要重新生图，直接做微信表情包 240 图、封面、横幅、图标、赞赏图和 zip。",
+      "expected_output": "应使用 --skip-generate 后处理已有 原始目录/ 图片，生成主表情240、配套图、文案和打包结果。",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "先不要生成，帮我规划一下怎么用 Seedream 的图做微信表情开放平台整套物料。",
+      "expected_output": "应说明分阶段流程，强调先样张、再批量、无水印、当前目录、原始目录平铺、后处理和打包。",
+      "files": []
+    }
+  ]
+}
