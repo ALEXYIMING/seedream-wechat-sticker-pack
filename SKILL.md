@@ -85,10 +85,12 @@ python3 /Users/alexyiming/.claude/skills/seedream-wechat-sticker-pack/scripts/se
 | `--intro` | 自动 | 专辑介绍，≤80 字 |
 | `--tip` | 自动 | 赞赏引导语 |
 | `--skip-generate` | false | 跳过 Seedream，直接处理 `原始目录/` 已有图 |
-| `--transparent-mode` | `keep` | `keep` 保留背景；`remove` 去纯色背景；`auto` 自动判断 |
+| `--transparent-mode` | `keep` | `keep` 保留背景；`remove` 使用边缘连通背景色抠图生成透明底；`auto` 自动判断 |
 | `--optimize` | true | 是否让 Seedream 优化提示词 |
 
 文字型像素表情建议 `--transparent-mode keep`，因为强背景和撞色是设计的一部分。角色型白底/纯色底表情默认优先用 `--transparent-mode remove`，让最终 `主表情240/` 输出成为最佳 240×240 透明底 PNG；不确定时用 `auto`。
+
+如果用户要求透明底，`remove` 不是简单四角单色阈值：脚本会采样整圈边缘和近角落背景色，并只删除与边缘连通的背景块，适合 Seedream 生成的渐变、晕影、高饱和背景。生成后仍要人眼检查 `主表情240/`，若某些图边缘还有背景残留，优先用同一边缘连通抠图思路加强该图后重新打包。
 
 ## 产物规格
 
@@ -105,6 +107,7 @@ python3 /Users/alexyiming/.claude/skills/seedream-wechat-sticker-pack/scripts/se
 - 不拉伸，中心裁切为正方形后缩放。
 - 文字型保留背景；角色型按参数透明化。
 - 用户要求“240×240 去除背景透明处理”“透明底”时，必须使用 `--transparent-mode remove`，并以 `主表情240/` 的透明 PNG 作为最终主表情。
+- 透明底交付前要抽查问题图：alpha 必须同时有 0/255，边缘不应残留大块不透明背景；高饱和背景图尤其要看 240 缩略图边缘。
 
 ### 配套图
 

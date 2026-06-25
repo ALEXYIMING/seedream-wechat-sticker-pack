@@ -12,6 +12,7 @@ Seedream 微信表情包全套物料编排脚本。
 from __future__ import annotations
 
 import argparse
+from collections import deque
 import json
 import os
 import re
@@ -231,7 +232,97 @@ def detect_bg(img: Image.Image) -> tuple[int, int, int]:
     return tuple(sorted(channel)[len(channel) // 2] for channel in zip(*vals))
 
 
+def color_dist2(a: tuple[int, int, int], b: tuple[int, int, int]) -> int:
+    return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2
+
+
+def collect_edge_palette(rgb: Image.Image, step: int = 16) -> list[tuple[int, int, int]]:
+    w, h = rgb.size
+    pix = rgb.load()
+    pts: list[tuple[int, int]] = []
+    for x in range(0, w, step):
+        pts.append((x, 0))
+        pts.append((x, h - 1))
+    for y in range(0, h, step):
+        pts.append((0, y))
+        pts.append((w - 1, y))
+    # Seedream often adds shaded/vignetted borders. Include near-corner interior samples
+    # so transparent-mode remove can clear those connected background blocks too.
+    for margin in [0, 24, 48, 80, 128, 192]:
+        if margin < w and margin < h:
+            pts.extend([
+                (margin, margin),
+                (w - 1 - margin, margin),
+                (margin, h - 1 - margin),
+                (w - 1 - margin, h - 1 - margin),
+            ])
+    return [pix[x, y] for x, y in pts]
+
+
+def remove_edge_connected_bg(img: Image.Image, threshold: int = 92, edge_step: int = 16) -> Image.Image:
+    """Remove Seedream backgrounds connected to the image edge.
+
+    A single median corner color misses high-saturation generated backgrounds with
+    gradients or vignetted borders. This samples many edge colors, marks pixels
+    close to that palette, and flood-fills only from the edge so foreground pixels
+    with similar colors are preserved.
+    """
+    img = img.convert("RGBA")
+    rgb = img.convert("RGB")
+    pix = rgb.load()
+    w, h = rgb.size
+    palette = collect_edge_palette(rgb, edge_step)
+    threshold2 = threshold * threshold
+
+    candidate = bytearray(w * h)
+    for y in range(h):
+        row = y * w
+        for x in range(w):
+            color = pix[x, y]
+            if any(color_dist2(color, bg) <= threshold2 for bg in palette):
+                candidate[row + x] = 1
+
+    remove = bytearray(w * h)
+    queue: deque[tuple[int, int]] = deque()
+
+    def enqueue(x: int, y: int) -> None:
+        idx = y * w + x
+        if candidate[idx] and not remove[idx]:
+            remove[idx] = 1
+            queue.append((x, y))
+
+    for x in range(w):
+        enqueue(x, 0)
+        enqueue(x, h - 1)
+    for y in range(h):
+        enqueue(0, y)
+        enqueue(w - 1, y)
+
+    while queue:
+        x, y = queue.popleft()
+        for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+            if 0 <= nx < w and 0 <= ny < h:
+                idx = ny * w + nx
+                if candidate[idx] and not remove[idx]:
+                    remove[idx] = 1
+                    queue.append((nx, ny))
+
+    out = img.copy()
+    out_pix = out.load()
+    for y in range(h):
+        row = y * w
+        for x in range(w):
+            r, g, b, a = out_pix[x, y]
+            if remove[row + x]:
+                # Keep RGB for previewers that ignore/flatten alpha incorrectly.
+                out_pix[x, y] = (r, g, b, 0)
+            else:
+                out_pix[x, y] = (r, g, b, 255)
+    return out
+
+
 def remove_solid_bg(img: Image.Image, threshold: int = 28) -> Image.Image:
+    # Keep the old simple remover available for narrow pure-background cases.
     img = img.convert("RGBA")
     bg = detect_bg(img)
     pix = img.load()
@@ -257,12 +348,12 @@ def process_main_stickers(raw_paths: Iterable[Path], cfg: PackConfig) -> list[Pa
         img = Image.open(src).convert("RGBA")
         img = center_crop(img, 1.0)
         if cfg.transparent_mode == "remove":
-            img = remove_solid_bg(img)
+            img = remove_edge_connected_bg(img)
         elif cfg.transparent_mode == "auto":
             # 文字型撞色背景通常应保留；只有四角颜色接近且很浅时才去底。
             bg = detect_bg(img)
             if max(bg) > 220:
-                img = remove_solid_bg(img)
+                img = remove_edge_connected_bg(img)
         # Pixel stickers should stay hard-edged; LANCZOS can create semi-transparent halos/blocks.
         img = img.resize((240, 240), Image.Resampling.NEAREST)
         out = out_dir / src.name
